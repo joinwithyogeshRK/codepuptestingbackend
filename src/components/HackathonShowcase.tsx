@@ -7,6 +7,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import { useAuth } from "@clerk/clerk-react";
 
 // Type definitions
 interface FormData {
@@ -51,6 +52,9 @@ const HackathonShowcase: React.FC = () => {
     deployedLink: "",
     description: "",
   });
+   const { getToken } = useAuth();
+   
+   
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
@@ -83,8 +87,8 @@ const HackathonShowcase: React.FC = () => {
     shareableLink: string
   ): Promise<SubmitResponse> => {
     try {
-      const clerkId = getClerkId();
-
+      const clerkId =  getClerkId();
+    const token = getToken()
       const submissionPayload = {
         name: projectData.name.trim(),
         deployedLink: projectData.deployedLink.trim(),
@@ -93,13 +97,17 @@ const HackathonShowcase: React.FC = () => {
         clerkId: clerkId,
       };
 
-      const response = await fetch("/api/hackathon", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(submissionPayload),
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_BASE_URL}/api/hackathon`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(submissionPayload),
+        }
+      );
 
       const data: SubmitResponse = await response.json();
 

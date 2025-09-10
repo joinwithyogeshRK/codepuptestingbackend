@@ -13,6 +13,7 @@ import {
   User,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
 
 // Type definitions - aligned with backend
 interface HackathonPost {
@@ -57,18 +58,20 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 }) => {
   const [localLikes, setLocalLikes] = useState<number>(project.likes);
   const [localIsLiked, setLocalIsLiked] = useState<boolean>(isLiked);
+  const { getToken } = useAuth();
 
   const handleLike = async (): Promise<void> => {
     try {
       // Optimistic UI update
       setLocalIsLiked(!localIsLiked);
       setLocalLikes((prev) => (localIsLiked ? prev - 1 : prev + 1));
-
+      const token = getToken();
       // Call API to like the post
       const response = await fetch(`/api/hackathon/${project.id}/like`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
       });
 
