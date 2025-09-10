@@ -67,13 +67,16 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
       setLocalLikes((prev) => (localIsLiked ? prev - 1 : prev + 1));
       const token = getToken();
       // Call API to like the post
-      const response = await fetch(`/api/hackathon/${project.id}/like`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_BASE_URL}/api/hackathon/${project.id}/like`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       if (!response.ok) {
         // Revert if API call fails

@@ -1,13 +1,13 @@
 import React, { useState} from "react";
 import {
-  User,
+  
   Send,
   CheckCircle,
   AlertCircle,
   Copy,
   Check,
 } from "lucide-react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 
 // Type definitions
 interface FormData {
@@ -53,17 +53,18 @@ const HackathonShowcase: React.FC = () => {
     description: "",
   });
    const { getToken } = useAuth();
+   const {user} = useUser()
    
    
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-
+const [projectId , setProjectId] = useState<number>()
   // Get clerkId from your authentication system (you'll need to implement this)
   const getClerkId = (): string => {
     // This should come from your auth context or session
     // For now, using a mock value - replace with actual clerkId from your auth
-    return "user_clerk_id_here"; // Replace with actual clerkId
+    return user?.id  || ""; // Replace with actual clerkId
   };
 
   const handleInputChange = (
@@ -108,9 +109,10 @@ const HackathonShowcase: React.FC = () => {
           body: JSON.stringify(submissionPayload),
         }
       );
+     
 
       const data: SubmitResponse = await response.json();
-
+setProjectId(data?.data?.id)
       if (!response.ok) {
         throw new Error(data.error || `Server error: ${response.status}`);
       }
@@ -161,7 +163,7 @@ const HackathonShowcase: React.FC = () => {
       // Generate shareable link (you might want to let backend handle this)
       const shareableLink = `${
         window.location.origin
-      }/hackathon/post/${Date.now()}`;
+      }/hackathon/post/${}`;
 
       const response = await submitToBackend(formData, shareableLink);
 
