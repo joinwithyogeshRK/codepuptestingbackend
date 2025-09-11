@@ -58,14 +58,26 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 }) => {
   const [localLikes, setLocalLikes] = useState<number>(project.likes);
   const [localIsLiked, setLocalIsLiked] = useState<boolean>(isLiked);
+  const [isLiking, setIsLiking] = useState<boolean>(false);
   const { getToken } = useAuth();
 
   const handleLike = async (): Promise<void> => {
+    if (isLiking) return; // Prevent multiple simultaneous likes
+    
     try {
+      setIsLiking(true);
+      
+      // Store original values for rollback
+      const originalIsLiked = localIsLiked;
+      const originalLikes = localLikes;
+      
       // Optimistic UI update
       setLocalIsLiked(!localIsLiked);
       setLocalLikes((prev) => (localIsLiked ? prev - 1 : prev + 1));
-      const token = getToken();
+      
+      // Fix: Properly await getToken
+      const token = await getToken();
+      
       // Call API to like the post
       const response = await fetch(
         `${import.meta.env.VITE_BASE_URL}/api/hackathon/${project.id}/like`,
@@ -80,15 +92,30 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 
       if (!response.ok) {
         // Revert if API call fails
-        setLocalIsLiked(localIsLiked);
-        setLocalLikes(project.likes);
-        throw new Error("Failed to like project");
+        setLocalIsLiked(originalIsLiked);
+        setLocalLikes(originalLikes);
+        throw new Error(`Failed to like project: ${response.status}`);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        // Update with actual data from server if needed
+        if (data.likes !== undefined) {
+          setLocalLikes(data.likes);
+        }
       }
 
       // Update parent component
       onLike(project.id);
     } catch (error) {
       console.error("Error liking project:", error);
+      // Revert optimistic update on error
+      setLocalIsLiked(localIsLiked);
+      setLocalLikes(project.likes);
+    } finally {
+      setIsLiking(false);
     }
   };
 
@@ -155,8 +182,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={handleLike}
-            disabled={localIsLiked !== isLiked} // Disable during API call
-            className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 hover:bg-white/30 transition-colors disabled:opacity-50"
+            disabled={isLiking}
+            className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 hover:bg-white/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Heart
               className={`w-4 h-4 ${
@@ -190,7 +217,7 @@ const ProjectGallery: React.FC = () => {
   const [likedProjects, setLikedProjects] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
 
-  // Fetch projects from API
+  // Fixed fetchProjects function with proper error handling and URL
   const fetchProjects = async (
     pageNum: number = 1,
     append: boolean = false
@@ -199,10 +226,29 @@ const ProjectGallery: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/hackathon?page=${pageNum}&limit=12`);
+      // Fix: Use the full URL with VITE_BASE_URL
+      const url = `${import.meta.env.VITE_BASE_URL}/api/hackathon?page=${pageNum}&limit=12`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authentication if required
+          // 'Authorization': `Bearer ${token}`, // Uncomment if auth is needed
+        },
+      });
 
+      // Check if response is ok
       if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response received:', text.substring(0, 200) + '...');
+        throw new Error('Server returned non-JSON response. Check your API endpoint.');
       }
 
       const data: ApiResponse = await response.json();
@@ -210,23 +256,38 @@ const ProjectGallery: React.FC = () => {
       if (data.success && data.data) {
         if (append) {
           setProjects((prev) => [...prev, ...data.data]);
+          setFilteredProjects((prev) => [...prev, ...data.data]);
         } else {
           setProjects(data.data);
+          setFilteredProjects(data.data);
         }
-        setFilteredProjects(data.data);
 
         // Check if there are more pages
         if (data.pagination && data.data.length < data.pagination.limit) {
           setHasMore(false);
         } else {
-          setHasMore(true);
+          setHasMore(data.data.length === 12); // Assuming limit is 12
         }
       } else {
         throw new Error(data.error || "Failed to fetch projects");
       }
     } catch (err) {
       console.error("Failed to fetch projects:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch projects");
+      
+      // More detailed error handling
+      let errorMessage = "Failed to fetch projects";
+      
+      if (err instanceof Error) {
+        if (err.message.includes('fetch')) {
+          errorMessage = "Network error - please check your connection";
+        } else if (err.message.includes('JSON')) {
+          errorMessage = "Server error - invalid response format";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -292,9 +353,10 @@ const ProjectGallery: React.FC = () => {
           <Loader className="w-8 h-8 text-emerald-600 animate-spin mx-auto mb-4" />
           <p className="text-slate-600">Loading amazing projects...</p>
         </div>
-      </div>
-    );
-  }
+        </div>
+      )
+    }
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
@@ -370,7 +432,10 @@ const ProjectGallery: React.FC = () => {
         {/* Refresh Button */}
         <div className="flex justify-center mb-8">
           <button
-            onClick={() => fetchProjects(1, false)}
+            onClick={() => {
+              setPage(1);
+              fetchProjects(1, false);
+            }}
             disabled={loading}
             className="bg-white text-slate-600 px-4 py-2 rounded-lg shadow hover:shadow-md transition-shadow disabled:opacity-50 flex items-center"
           >
@@ -387,7 +452,10 @@ const ProjectGallery: React.FC = () => {
             <p className="font-medium">Error loading projects:</p>
             <p className="text-sm">{error}</p>
             <button
-              onClick={() => fetchProjects(1, false)}
+              onClick={() => {
+                setPage(1);
+                fetchProjects(1, false);
+              }}
               className="mt-2 bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 transition-colors"
             >
               Try Again
