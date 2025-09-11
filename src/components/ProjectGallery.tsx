@@ -15,7 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/clerk-react";
 
-// Type definitions - aligned with backend
+// Type definitions - aligned with backend (moved to separate file would be better)
 interface HackathonPost {
   id: number;
   name: string;
@@ -47,7 +47,7 @@ interface ApiResponse {
 
 interface ProjectCardProps {
   project: HackathonPost;
-  onLike: (projectId: number) => void;
+  onLike: (projectId: number, newLikeStatus: boolean) => void;
   isLiked?: boolean;
 }
 
@@ -59,26 +59,32 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   const [localLikes, setLocalLikes] = useState<number>(project.likes);
   const [localIsLiked, setLocalIsLiked] = useState<boolean>(isLiked);
   const [isLiking, setIsLiking] = useState<boolean>(false);
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
+  const navigate = useNavigate();
 
   const handleLike = async (): Promise<void> => {
-    if (isLiking) return; // Prevent multiple simultaneous likes
-    
+    if (isLiking) return;
+
+    // Redirect to sign in if not authenticated
+    if (!isSignedIn) {
+      navigate("/sign-in");
+      return;
+    }
+
     try {
       setIsLiking(true);
-      
+
       // Store original values for rollback
       const originalIsLiked = localIsLiked;
       const originalLikes = localLikes;
-      
+
       // Optimistic UI update
       setLocalIsLiked(!localIsLiked);
       setLocalLikes((prev) => (localIsLiked ? prev - 1 : prev + 1));
-      
-      // Fix: Properly await getToken
+
       const token = await getToken();
-      
-      // Call API to like the post
+
+      // Call API to toggle like status
       const response = await fetch(
         `${import.meta.env.VITE_BASE_URL}/api/hackathon/${project.id}/like`,
         {
@@ -97,18 +103,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
         throw new Error(`Failed to like project: ${response.status}`);
       }
 
-      // Check if response is JSON
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        // Update with actual data from server if needed
-        if (data.likes !== undefined) {
-          setLocalLikes(data.likes);
-        }
-      }
-
-      // Update parent component
-      onLike(project.id);
+      // Update parent component with new like status
+      onLike(project.id, !localIsLiked);
     } catch (error) {
       console.error("Error liking project:", error);
       // Revert optimistic update on error
@@ -192,14 +188,13 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             />
             <span className="text-sm">{localLikes}</span>
           </button>
-          <a
-            href={project.shareableLink}
-            target="_blank"
-            rel="noopener noreferrer"
+         
+          <button
+            onClick={() => navigate(`/project/${project.id}`)}
             className="bg-white/20 backdrop-blur-sm rounded-lg p-2 hover:bg-white/30 transition-colors"
           >
             <Eye className="w-4 h-4" />
-          </a>
+          </button>
         </div>
       </div>
     </div>
@@ -217,7 +212,6 @@ const ProjectGallery: React.FC = () => {
   const [likedProjects, setLikedProjects] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
 
-  // Fixed fetchProjects function with proper error handling and URL
   const fetchProjects = async (
     pageNum: number = 1,
     append: boolean = false
@@ -226,29 +220,24 @@ const ProjectGallery: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Fix: Use the full URL with VITE_BASE_URL
-      const url = `${import.meta.env.VITE_BASE_URL}/api/hackathon?page=${pageNum}&limit=12`;
-      
+      const url = `${
+        import.meta.env.VITE_BASE_URL
+      }/api/hackathon?page=${pageNum}&limit=12`;
+
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
-          // Add authentication if required
-          // 'Authorization': `Bearer ${token}`, // Uncomment if auth is needed
+          "Content-Type": "application/json",
         },
       });
 
-      // Check if response is ok
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // Check if response is actually JSON
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('Non-JSON response received:', text.substring(0, 200) + '...');
-        throw new Error('Server returned non-JSON response. Check your API endpoint.');
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server returned non-JSON response");
       }
 
       const data: ApiResponse = await response.json();
@@ -266,27 +255,19 @@ const ProjectGallery: React.FC = () => {
         if (data.pagination && data.data.length < data.pagination.limit) {
           setHasMore(false);
         } else {
-          setHasMore(data.data.length === 12); // Assuming limit is 12
+          setHasMore(data.data.length === 12);
         }
       } else {
         throw new Error(data.error || "Failed to fetch projects");
       }
     } catch (err) {
       console.error("Failed to fetch projects:", err);
-      
-      // More detailed error handling
+
       let errorMessage = "Failed to fetch projects";
-      
       if (err instanceof Error) {
-        if (err.message.includes('fetch')) {
-          errorMessage = "Network error - please check your connection";
-        } else if (err.message.includes('JSON')) {
-          errorMessage = "Server error - invalid response format";
-        } else {
-          errorMessage = err.message;
-        }
+        errorMessage = err.message;
       }
-      
+
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -318,30 +299,35 @@ const ProjectGallery: React.FC = () => {
     }
   }, [searchQuery, projects]);
 
-  const handleLike = (projectId: number): void => {
+  const handleLike = (projectId: number, isLiked: boolean): void => {
     // Update local state to reflect the like
     setProjects((prev) =>
       prev.map((project) =>
         project.id === projectId
-          ? { ...project, likes: project.likes + 1 }
+          ? {
+              ...project,
+              likes: isLiked ? project.likes + 1 : project.likes - 1,
+            }
           : project
       )
     );
 
-    // Add to liked projects set
-    setLikedProjects((prev) => new Set(prev).add(projectId));
+    // Update liked projects set
+    if (isLiked) {
+      setLikedProjects((prev) => new Set(prev).add(projectId));
+    } else {
+      setLikedProjects((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(projectId);
+        return newSet;
+      });
+    }
   };
 
   const handleLoadMore = (): void => {
     const nextPage = page + 1;
     setPage(nextPage);
     fetchProjects(nextPage, true);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === "Enter") {
-      // Search is handled by useEffect
-    }
   };
 
   const totalLikes = projects.reduce((sum, project) => sum + project.likes, 0);
@@ -353,10 +339,9 @@ const ProjectGallery: React.FC = () => {
           <Loader className="w-8 h-8 text-emerald-600 animate-spin mx-auto mb-4" />
           <p className="text-slate-600">Loading amazing projects...</p>
         </div>
-        </div>
-      )
-    }
-  
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
@@ -422,7 +407,6 @@ const ProjectGallery: React.FC = () => {
                 placeholder="Search projects by name, description, or creator..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={handleKeyPress}
                 className="flex-1 py-3 text-slate-700 placeholder-slate-400 outline-none"
               />
             </div>

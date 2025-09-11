@@ -166,7 +166,7 @@ setProjectId(data?.data?.id)
       // Generate shareable link (you might want to let backend handle this)
       const shareableLink = `${
         window.location.origin
-      }/hackathon/post/${projectId}/m`;
+      }/hackathon/post/${projectId}`;
 
       const response = await submitToBackend(formData, shareableLink);
 
