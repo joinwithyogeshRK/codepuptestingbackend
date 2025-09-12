@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
 
 // Reuse the same type definitions
 interface HackathonPost {
@@ -46,7 +47,7 @@ const IndividualPost: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-
+  const { getToken } = useAuth();
   // Fetch individual post
   const fetchPost = async (): Promise<void> => {
     if (!id) {
@@ -54,7 +55,7 @@ const IndividualPost: React.FC = () => {
       setLoading(false);
       return;
     }
-
+    const token = await getToken();
     try {
       setLoading(true);
       setError(null);
@@ -65,6 +66,7 @@ const IndividualPost: React.FC = () => {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
         }
       );

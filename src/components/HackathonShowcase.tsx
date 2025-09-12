@@ -1,12 +1,5 @@
-import React, { useState} from "react";
-import {
-  
-  Send,
-  CheckCircle,
-  AlertCircle,
-  Copy,
-  Check,
-} from "lucide-react";
+import React, { useState } from "react";
+import { Send, CheckCircle, AlertCircle, Copy, Check } from "lucide-react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 
 // Type definitions
@@ -52,21 +45,20 @@ const HackathonShowcase: React.FC = () => {
     deployedLink: "",
     description: "",
   });
-   const { getToken } = useAuth();
-   const {user} = useUser()
-   
-   
+  const { getToken } = useAuth();
+  const { user } = useUser();
+
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-const [projectId , setProjectId] = useState<number>()
+  const [projectId, setProjectId] = useState<number>();
   // Get clerkId from your authentication system (you'll need to implement this)
   const getClerkId = (): string => {
     // This should come from your auth context or session
     // For now, using a mock value - replace with actual clerkId from your auth
-    return user?.id  || ""; // Replace with actual clerkId
+    return user?.id || ""; // Replace with actual clerkId
   };
- console.log(projectId)
+  console.log(projectId);
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ): void => {
@@ -81,15 +73,15 @@ const [projectId , setProjectId] = useState<number>()
       setSubmitStatus(null);
     }
   };
- console.log(projectId);
+  console.log(projectId);
   // Real backend integration
   const submitToBackend = async (
     projectData: FormData,
     shareableLink: string
   ): Promise<SubmitResponse> => {
     try {
-      const clerkId =  getClerkId();
-    const token = getToken()
+      const clerkId = await getClerkId();
+      const token = await getToken();
       const submissionPayload = {
         name: projectData.name.trim(),
         deployedLink: projectData.deployedLink.trim(),
@@ -97,7 +89,8 @@ const [projectId , setProjectId] = useState<number>()
         shareableLink: shareableLink,
         clerkId: clerkId,
       };
- console.log(projectId);
+      console.log(projectId);
+      console.log(token, "this is the token we are passing ");
       const response = await fetch(
         `${import.meta.env.VITE_BASE_URL}/api/hackathon`,
         {
@@ -110,15 +103,14 @@ const [projectId , setProjectId] = useState<number>()
         }
       );
 
-      console.log(response)
-     
+      console.log(response);
 
       const data: SubmitResponse = await response.json();
-setProjectId(data?.data?.id)
+      setProjectId(data?.data?.id);
       if (!response.ok) {
         throw new Error(data.error || `Server error: ${response.status}`);
       }
- console.log(projectId);
+      console.log(projectId);
       return data;
     } catch (error) {
       console.error("Failed to submit project:", error);
@@ -143,13 +135,13 @@ setProjectId(data?.data?.id)
         errors.push("Please enter a valid URL");
       }
     }
- 
+
     if (!formData.description.trim()) {
       errors.push("Project description is required");
     } else if (formData.description.trim().length < 20) {
       errors.push("Project description must be at least 20 characters long");
     }
- 
+
     if (errors.length > 0) {
       setSubmitStatus({
         type: "error",
@@ -162,11 +154,8 @@ setProjectId(data?.data?.id)
     setSubmitStatus(null);
 
     try {
-
       // Generate shareable link (you might want to let backend handle this)
-      const shareableLink = `${
-        window.location.origin
-      }/hackathon/post/${projectId}`;
+      const shareableLink = `${window.location.origin}/hackathon/post/${projectId}`;
 
       const response = await submitToBackend(formData, shareableLink);
 
@@ -235,9 +224,7 @@ setProjectId(data?.data?.id)
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div>
-          
-        </div>
+        <div></div>
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-emerald-600 mb-4">
             🎉 Hackathon Showcase
@@ -247,8 +234,6 @@ setProjectId(data?.data?.id)
             your work!
           </p>
         </div>
-
-     
 
         {/* Main Form */}
         <div className="bg-white rounded-xl shadow-lg p-6">

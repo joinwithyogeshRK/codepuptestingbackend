@@ -188,7 +188,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             />
             <span className="text-sm">{localLikes}</span>
           </button>
-         
+
           <button
             onClick={() => navigate(`/project/${project.id}`)}
             className="bg-white/20 backdrop-blur-sm rounded-lg p-2 hover:bg-white/30 transition-colors"
@@ -211,11 +211,12 @@ const ProjectGallery: React.FC = () => {
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [likedProjects, setLikedProjects] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
-
+  const { getToken } = useAuth();
   const fetchProjects = async (
     pageNum: number = 1,
     append: boolean = false
   ): Promise<void> => {
+    const token = await getToken();
     try {
       setLoading(true);
       setError(null);
@@ -228,6 +229,7 @@ const ProjectGallery: React.FC = () => {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
       });
 
