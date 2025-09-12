@@ -11,11 +11,15 @@ import {
   Calendar,
   Loader,
   User,
+  Tag,
+  Linkedin,
+  Twitter,
+  Filter,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser, SignInButton } from "@clerk/clerk-react";
 
-// Type definitions - aligned with backend (moved to separate file would be better)
+// Type definitions - aligned with backend
 interface HackathonPost {
   id: number;
   name: string;
@@ -25,6 +29,10 @@ interface HackathonPost {
   likes: number;
   userId: number;
   createdAt: string;
+  linkedinPostUrl?: string;
+  twitterPostUrl?: string;
+  tags: string;
+  userName?: string;
   user?: {
     id: number;
     clerkId: string;
@@ -60,31 +68,35 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   const [localIsLiked, setLocalIsLiked] = useState<boolean>(isLiked);
   const [isLiking, setIsLiking] = useState<boolean>(false);
   const { getToken, isSignedIn } = useAuth();
+  const { user } = useUser();
   const navigate = useNavigate();
 
   const handleLike = async (): Promise<void> => {
     if (isLiking) return;
 
-    // Redirect to sign in if not authenticated
+    // This shouldn't happen since SignInButton handles the auth flow
     if (!isSignedIn) {
-      navigate("/sign-in");
       return;
     }
 
     try {
       setIsLiking(true);
+      const token = await getToken();
+
+      if (!user?.id) {
+        throw new Error("User not authenticated properly");
+      }
 
       // Store original values for rollback
       const originalIsLiked = localIsLiked;
       const originalLikes = localLikes;
 
       // Optimistic UI update
-      setLocalIsLiked(!localIsLiked);
+      const newLikeStatus = !localIsLiked;
+      setLocalIsLiked(newLikeStatus);
       setLocalLikes((prev) => (localIsLiked ? prev - 1 : prev + 1));
 
-      const token = await getToken();
-
-      // Call API to toggle like status
+      // Call API to like the post
       const response = await fetch(
         `${import.meta.env.VITE_BASE_URL}/api/hackathon/${project.id}/like`,
         {
@@ -93,22 +105,38 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
+          body: JSON.stringify({ clerkId: user.id }),
         }
       );
 
-      if (!response.ok) {
-        // Revert if API call fails
-        setLocalIsLiked(originalIsLiked);
-        setLocalLikes(originalLikes);
-        throw new Error(`Failed to like project: ${response.status}`);
-      }
+      const result = await response.json();
 
-      // Update parent component with new like status
-      onLike(project.id, !localIsLiked);
+      if (!response.ok) {
+        // Handle specific error cases
+        if (result.error === "You have already liked this post") {
+          // User already liked, just update UI to reflect that
+          setLocalIsLiked(true);
+          setLocalLikes(project.likes);
+        } else {
+          // Revert if API call fails
+          setLocalIsLiked(originalIsLiked);
+          setLocalLikes(originalLikes);
+          throw new Error(
+            result.error || `Failed to like project: ${response.status}`
+          );
+        }
+      } else {
+        // Update with actual server response
+        setLocalLikes(result.data.likes);
+        setLocalIsLiked(true);
+
+        // Update parent component
+        onLike(project.id, true);
+      }
     } catch (error) {
       console.error("Error liking project:", error);
       // Revert optimistic update on error
-      setLocalIsLiked(localIsLiked);
+      setLocalIsLiked(isLiked);
       setLocalLikes(project.likes);
     } finally {
       setIsLiking(false);
@@ -125,76 +153,119 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
   };
 
   // Generate consistent background colors based on project ID
-  const bgColors = [
-    "bg-gradient-to-br from-pink-500 to-red-500",
-    "bg-gradient-to-br from-blue-400 to-blue-600",
-    "bg-gradient-to-br from-green-400 to-emerald-600",
-    "bg-gradient-to-br from-amber-400 to-orange-600",
-    "bg-gradient-to-br from-purple-400 to-purple-600",
-    "bg-gradient-to-br from-cyan-400 to-cyan-600",
-    "bg-gradient-to-br from-indigo-400 to-indigo-600",
-  ];
-
-  const bgColor = bgColors[project.id % bgColors.length];
-  const textColor = "text-white";
 
   return (
-    <div
-      className={`${bgColor} ${textColor} rounded-xl shadow-lg overflow-hidden h-80 flex flex-col`}
-    >
-      <div className="p-6 flex flex-col flex-1 justify-between">
+    <div className="relative group rounded-xl shadow-lg overflow-hidden aspect-video bg-gray-900">
+      {/* Iframe covering full background */}
+      <iframe
+        src={project.deployedLink}
+        className="absolute inset-0 w-full h-full border-0"
+        title={project.name}
+      />
+
+      {/* Overlay with details - hidden by default, visible on hover */}
+      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-between p-4 text-white">
+        {/* Top section with project details */}
         <div>
-          <h3 className="text-xl font-bold mb-2">{project.name}</h3>
-          <p className="text-sm opacity-90 mb-4 line-clamp-3">
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="text-xl font-bold flex-1">{project.name}</h3>
+            {project.tags && (
+              <span className="bg-emerald-500 text-white px-2 py-1 rounded-full text-xs font-medium ml-2 flex items-center">
+                <Tag className="w-3 h-3 mr-1" />
+                {project.tags}
+              </span>
+            )}
+          </div>
+          <p className="text-sm opacity-90 mb-4 line-clamp-2">
             {project.description}
           </p>
-        </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <span className="flex items-center">
-            <Calendar className="w-4 h-4 mr-1" />
-            {formatDate(project.createdAt)}
-          </span>
-          {project.user && (
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="flex items-center">
+              <Calendar className="w-4 h-4 mr-1" />
+              {formatDate(project.createdAt)}
+            </span>
             <span className="flex items-center">
               <User className="w-4 h-4 mr-1" />
-              {project.user.firstName || project.user.email.split("@")[0]}
+              {project.userName ||
+                project.user?.firstName ||
+                project.user?.email.split("@")[0]}
             </span>
+          </div>
+
+          {/* Social Links */}
+          {(project.linkedinPostUrl || project.twitterPostUrl) && (
+            <div className="flex items-center space-x-2 text-sm">
+              {project.linkedinPostUrl && (
+                <a
+                  href={project.linkedinPostUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center text-blue-300 hover:text-blue-100 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Linkedin className="w-4 h-4 mr-1" />
+                  LinkedIn
+                </a>
+              )}
+              {project.twitterPostUrl && (
+                <a
+                  href={project.twitterPostUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center text-sky-300 hover:text-sky-100 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Twitter className="w-4 h-4 mr-1" />
+                  Twitter
+                </a>
+              )}
+            </div>
           )}
         </div>
-      </div>
 
-      {/* Card Actions */}
-      <div className="p-4 bg-black/20 flex items-center justify-between">
-        <a
-          href={project.deployedLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-white/90 text-slate-800 px-4 py-2 rounded-lg font-medium flex items-center hover:bg-white transition-colors"
-        >
-          <ExternalLink className="w-4 h-4 mr-2" />
-          Visit App
-        </a>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleLike}
-            disabled={isLiking}
-            className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 hover:bg-white/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        {/* Bottom section with actions */}
+        <div className="flex items-center justify-between">
+          <a
+            href={project.deployedLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-white/90 text-slate-800 px-4 py-2 rounded-lg font-medium flex items-center hover:bg-white transition-colors"
           >
-            <Heart
-              className={`w-4 h-4 ${
-                localIsLiked ? "fill-red-500 text-red-500" : "text-white"
-              }`}
-            />
-            <span className="text-sm">{localLikes}</span>
-          </button>
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Visit App
+          </a>
 
-          <button
-            onClick={() => navigate(`/project/${project.id}`)}
-            className="bg-white/20 backdrop-blur-sm rounded-lg p-2 hover:bg-white/30 transition-colors"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
+          <div className="flex items-center space-x-2">
+{!isSignedIn ? (
+              <SignInButton mode="modal">
+                <button className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 hover:bg-white/30 transition-colors">
+                  <Heart className="w-4 h-4 text-white" />
+                  <span className="text-sm">{localLikes}</span>
+                </button>
+              </SignInButton>
+            ) : (
+              <button
+                onClick={handleLike}
+                disabled={isLiking}
+                className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 hover:bg-white/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Heart
+                  className={`w-4 h-4 ${
+                    localIsLiked ? "fill-red-500 text-red-500" : "text-white"
+                  }`}
+                />
+                <span className="text-sm">{localLikes}</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => navigate(`/project/${project.id}`)}
+              className="bg-white/20 backdrop-blur-sm rounded-lg p-2 hover:bg-white/30 transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -205,6 +276,8 @@ const ProjectGallery: React.FC = () => {
   const [projects, setProjects] = useState<HackathonPost[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<HackathonPost[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedTag, setSelectedTag] = useState<string>("");
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<number>(1);
@@ -276,30 +349,57 @@ const ProjectGallery: React.FC = () => {
     }
   };
 
-  // Load projects on component mount
+  // Load projects and tags on component mount
   useEffect(() => {
     fetchProjects(1, false);
+    fetchTags();
   }, []);
 
-  // Filter projects based on search query
+  // Fetch available tags
+  const fetchTags = async (): Promise<void> => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_BASE_URL}/api/hackathon/tags`
+      );
+      const data = await response.json();
+      if (data.success) {
+        setAvailableTags(data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching tags:", error);
+    }
+  };
+
+  // Filter projects based on search query and selected tag
   useEffect(() => {
+    let filtered = projects;
+
+    // Apply search filter
     if (searchQuery.trim()) {
-      const filtered = projects.filter(
+      filtered = filtered.filter(
         (project) =>
           project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           project.description
             .toLowerCase()
             .includes(searchQuery.toLowerCase()) ||
+          project.userName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           project.user?.firstName
             ?.toLowerCase()
             .includes(searchQuery.toLowerCase()) ||
-          project.user?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+          project.user?.email
+            ?.toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          project.tags?.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredProjects(filtered);
-    } else {
-      setFilteredProjects(projects);
     }
-  }, [searchQuery, projects]);
+
+    // Apply tag filter
+    if (selectedTag) {
+      filtered = filtered.filter((project) => project.tags === selectedTag);
+    }
+
+    setFilteredProjects(filtered);
+  }, [searchQuery, selectedTag, projects]);
 
   const handleLike = (projectId: number, isLiked: boolean): void => {
     // Update local state to reflect the like
@@ -399,18 +499,47 @@ const ProjectGallery: React.FC = () => {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="max-w-2xl mx-auto mb-12">
+        {/* Search and Filter Bar */}
+        <div className="max-w-4xl mx-auto mb-12 space-y-4">
+          {/* Search Bar */}
           <div className="bg-white rounded-xl shadow-lg p-2 flex items-center">
             <div className="flex-1 flex items-center">
               <Search className="w-5 h-5 text-slate-400 ml-4 mr-3" />
               <input
                 type="text"
-                placeholder="Search projects by name, description, or creator..."
+                placeholder="Search projects by name, description, creator, or tags..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 py-3 text-slate-700 placeholder-slate-400 outline-none"
               />
+            </div>
+          </div>
+
+          {/* Tag Filter */}
+          <div className="flex items-center justify-center">
+            <div className="flex items-center space-x-2 bg-white rounded-xl shadow-lg p-4">
+              <Filter className="w-5 h-5 text-slate-600" />
+              <span className="text-slate-700 font-medium">Filter by tag:</span>
+              <select
+                value={selectedTag}
+                onChange={(e) => setSelectedTag(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 outline-none focus:border-emerald-500 transition-colors"
+              >
+                <option value="">All Tags</option>
+                {availableTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                  </option>
+                ))}
+              </select>
+              {selectedTag && (
+                <button
+                  onClick={() => setSelectedTag("")}
+                  className="text-slate-500 hover:text-slate-700 text-sm underline"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -454,7 +583,7 @@ const ProjectGallery: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         {filteredProjects.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredProjects.map((project) => (
                 <ProjectCard
                   key={project.id}

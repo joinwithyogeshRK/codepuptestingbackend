@@ -11,19 +11,31 @@ import {
   Check,
   Loader,
   AlertCircle,
+  Maximize,
+  Minimize,
+  Heart,
+  Tag,
+  Linkedin,
+  Twitter,
+  Trash2,
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth, useUser, SignInButton } from "@clerk/clerk-react";
 
-// Reuse the same type definitions
+// Type definitions - aligned with backend
 interface HackathonPost {
   id: number;
   name: string;
   deployedLink: string;
   description: string;
   shareableLink: string;
+  likes: number;
   userId: number;
   createdAt: string;
+  linkedinPostUrl?: string;
+  twitterPostUrl?: string;
+  tags: string;
+  userName?: string;
   user?: {
     id: number;
     clerkId: string;
@@ -47,7 +59,12 @@ const IndividualPost: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-  const { getToken } = useAuth();
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isLiking, setIsLiking] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [userHasLiked, setUserHasLiked] = useState<boolean>(false);
+  const { getToken, isSignedIn } = useAuth();
+  const { user } = useUser();
   // Fetch individual post
   const fetchPost = async (): Promise<void> => {
     if (!id) {
@@ -115,6 +132,95 @@ const IndividualPost: React.FC = () => {
       document.body.removeChild(textArea);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
+  // Like functionality
+  const handleLike = async (): Promise<void> => {
+    if (isLiking || !post) return;
+
+    if (!isSignedIn) {
+      // This shouldn't happen since SignInButton handles the auth flow
+      return;
+    }
+
+    try {
+      setIsLiking(true);
+      const token = await getToken();
+
+      if (!user?.id) {
+        throw new Error("User not authenticated properly");
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_BASE_URL}/api/hackathon/${post.id}/like`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ clerkId: user.id }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setPost({ ...post, likes: result.data.likes });
+        setUserHasLiked(true);
+      } else if (result.error === "You have already liked this post") {
+        setUserHasLiked(true);
+      } else {
+        throw new Error(result.error || "Failed to like post");
+      }
+    } catch (error) {
+      console.error("Error liking post:", error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  // Delete functionality
+  const handleDelete = async (): Promise<void> => {
+    if (isDeleting || !post) return;
+
+    if (!confirm("Are you sure you want to delete this post? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      const token = await getToken();
+
+      if (!user?.id) {
+        throw new Error("User not authenticated properly");
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_BASE_URL}/api/hackathon/${post.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ clerkId: user.id }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        navigate("/gallery");
+      } else {
+        throw new Error(result.error || "Failed to delete post");
+      }
+    } catch (error) {
+      console.error("Error deleting post:", error);
+      alert("Failed to delete post. Please try again.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -193,177 +299,247 @@ const IndividualPost: React.FC = () => {
   const bgColor = bgColors[post.id % bgColors.length];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Hero Section */}
-      <div className={`bg-gradient-to-br ${bgColor} text-white`}>
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          {/* Navigation */}
-          <div className="flex items-center justify-between mb-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-indigo-400/20 to-purple-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-full blur-3xl"></div>
+      </div>
+      
+      {/* Compact Navigation Bar */}
+      <div className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-white/30 shadow-lg">
+        <div className="max-w-6xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
             <button
               onClick={() => navigate(-1)}
-              className="flex items-center text-white/90 hover:text-white transition-colors bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2"
+              className="flex items-center bg-white/80 backdrop-blur-sm text-slate-700 hover:text-slate-900 hover:bg-white px-4 py-2 rounded-lg transition-all duration-200 border border-white/50 shadow-sm text-sm font-medium"
             >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Back
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Gallery
             </button>
 
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => copyToClipboard(window.location.href)}
-                className="flex items-center text-white/90 hover:text-white transition-colors bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2"
-              >
-                {copiedLink ? (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="w-4 h-4 mr-2" />
-                    Share
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Post Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">{post.name}</h1>
-            <div className="flex items-center justify-center space-x-6 text-white/90">
-              <div className="flex items-center">
-                <Calendar className="w-5 h-5 mr-2" />
-                <span>{formatDate(post.createdAt)}</span>
-              </div>
-              {post.user && (
-                <div className="flex items-center">
-                  <User className="w-5 h-5 mr-2" />
-                  <span>
-                    {post.user.firstName && post.user.lastName
-                      ? `${post.user.firstName} ${post.user.lastName}`
-                      : post.user.firstName || post.user.email.split("@")[0]}
-                  </span>
-                </div>
+            <button
+              onClick={() => copyToClipboard(window.location.href)}
+              className="flex items-center bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow-sm text-sm font-medium"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share
+                </>
               )}
-            </div>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Content Section */}
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="grid md:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="md:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
-              <h2 className="text-2xl font-bold text-slate-800 mb-4 flex items-center">
-                <Code className="w-6 h-6 mr-2 text-emerald-600" />
-                About This Project
-              </h2>
-              <div className="prose prose-slate max-w-none">
-                <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+      {/* Fullscreen Modal for Iframe */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 bg-black">
+          <div className="absolute top-4 right-4 z-10">
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="bg-white/20 hover:bg-white/30 text-white p-3 rounded-lg backdrop-blur-sm transition-colors"
+            >
+              <Minimize className="w-6 h-6" />
+            </button>
+          </div>
+          <iframe
+            src={post.deployedLink}
+            className="w-full h-full border-0"
+            title={`${post.name} - Fullscreen`}
+          />
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Compact Project Header */}
+        <div className="mb-6">
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-white/50">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              <div className="flex-1">
+                <h1 className="text-2xl lg:text-3xl font-bold text-slate-900 mb-3">
+                  {post.name}
+                </h1>
+                <div className="flex flex-wrap items-center gap-4 text-slate-600 text-sm mb-4">
+                  <div className="flex items-center">
+                    <Calendar className="w-4 h-4 mr-2" />
+                    <span>{formatDate(post.createdAt)}</span>
+                  </div>
+                  {post.user && (
+                    <div className="flex items-center">
+                      <User className="w-4 h-4 mr-2" />
+                      <span>
+                        {post.user.firstName && post.user.lastName
+                          ? `${post.user.firstName} ${post.user.lastName}`
+                          : post.user.firstName || post.user.email.split("@")[0]}
+                      </span>
+                    </div>
+                  )}
+                  {post.tags && (
+                    <div className="flex items-center">
+                      <Tag className="w-4 h-4 mr-2" />
+                      <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs font-medium">
+                        {post.tags}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-slate-700 text-sm leading-relaxed">
                   {post.description}
                 </p>
               </div>
-            </div>
-
-            {/* Actions */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex flex-wrap gap-4">
+              
+              <div className="flex flex-col gap-2">
                 <a
                   href={post.deployedLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium flex items-center justify-center hover:bg-emerald-700 transition-colors"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium flex items-center transition-colors text-sm"
                 >
-                  <ExternalLink className="w-5 h-5 mr-2" />
-                  Visit Live Project
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Visit Live
                 </a>
+                {(post.linkedinPostUrl || post.twitterPostUrl) && (
+                  <div className="flex gap-2">
+                    {post.linkedinPostUrl && (
+                      <a
+                        href={post.linkedinPostUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs flex items-center transition-colors"
+                      >
+                        <Linkedin className="w-3 h-3 mr-1" />
+                        LinkedIn
+                      </a>
+                    )}
+                    {post.twitterPostUrl && (
+                      <a
+                        href={post.twitterPostUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-2 rounded-lg text-xs flex items-center transition-colors"
+                      >
+                        <Twitter className="w-3 h-3 mr-1" />
+                        Twitter
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Creator Info */}
-            {post.user && (
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  Created By
-                </h3>
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                    {post.user.firstName
-                      ? post.user.firstName.charAt(0).toUpperCase()
-                      : post.user.email.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-800">
-                      {post.user.firstName && post.user.lastName
-                        ? `${post.user.firstName} ${post.user.lastName}`
-                        : post.user.firstName || post.user.email.split("@")[0]}
-                    </p>
-                    <p className="text-sm text-slate-500">{post.user.email}</p>
-                  </div>
+        {/* Project Preview */}
+        <div className="mb-8">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg overflow-hidden border border-white/50">
+            {/* Compact Preview Header */}
+            <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-200/50 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="flex space-x-1.5">
+                  <div className="w-2.5 h-2.5 bg-red-400 rounded-full"></div>
+                  <div className="w-2.5 h-2.5 bg-yellow-400 rounded-full"></div>
+                  <div className="w-2.5 h-2.5 bg-green-400 rounded-full"></div>
                 </div>
+                <span className="text-slate-600 text-xs font-medium">Live Preview</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsFullscreen(true)}
+                  className="flex items-center text-slate-600 hover:text-slate-800 bg-slate-100/80 hover:bg-slate-200/80 px-2 py-1 rounded-md text-xs transition-colors"
+                >
+                  <Maximize className="w-3 h-3 mr-1" />
+                  Fullscreen
+                </button>
+{!isSignedIn ? (
+                  <SignInButton mode="modal">
+                    <button className="flex items-center px-2 py-1 rounded-md text-xs font-medium transition-colors bg-red-50 hover:bg-red-100 text-red-600">
+                      <Heart className="w-3 h-3 mr-1" />
+                      {post.likes}
+                    </button>
+                  </SignInButton>
+                ) : (
+                  <button
+                    onClick={handleLike}
+                    disabled={isLiking || userHasLiked}
+                    className={`flex items-center px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                      userHasLiked 
+                        ? 'bg-red-100 text-red-700 cursor-not-allowed' 
+                        : 'bg-red-50 hover:bg-red-100 text-red-600'
+                    }`}
+                  >
+                    <Heart className={`w-3 h-3 mr-1 ${userHasLiked ? 'fill-current' : ''}`} />
+                    {post.likes}
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* Iframe Container */}
+            <div className="relative bg-white" style={{ height: '60vh' }}>
+              <iframe
+                src={post.deployedLink}
+                className="w-full h-full border-0"
+                title={post.name}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Compact Actions Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            {user && post.user && user.id === post.user.clerkId && (
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex items-center bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            )}
+            <button
+              onClick={() => copyToClipboard(post.shareableLink)}
+              className="flex items-center bg-slate-600 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy Link
+                </>
+              )}
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-2 text-slate-600 text-sm">
+            {post.user && (
+              <div className="flex items-center">
+                <div className={`w-6 h-6 bg-gradient-to-br ${bgColor} rounded-full flex items-center justify-center text-white font-bold text-xs mr-2`}>
+                  {post.user.firstName
+                    ? post.user.firstName.charAt(0).toUpperCase()
+                    : post.user.email.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-xs">
+                  Created by {post.userName || 
+                   (post.user.firstName && post.user.lastName
+                    ? `${post.user.firstName} ${post.user.lastName}`
+                    : post.user.firstName || post.user.email.split("@")[0])}
+                </span>
               </div>
             )}
-
-            {/* Project Links */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Project Links
-              </h3>
-              <div className="space-y-3 overflow-auto">
-                <a
-                  href={post.deployedLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
-                >
-                  <Globe className="w-5 h-5 text-emerald-600 mr-3" />
-                  <div>
-                    <p className="font-medium text-slate-800">Live Demo</p>
-                    <p className="text-sm text-slate-500 truncate">
-                      {post.deployedLink}
-                    </p>
-                  </div>
-                  <ExternalLink className="w-4 h-4 text-slate-400 ml-auto" />
-                </a>
-
-                <button
-                  onClick={() => copyToClipboard(post.shareableLink)}
-                  className="w-full flex items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
-                >
-                  <Share2 className="w-5 h-5 text-blue-600 mr-3" />
-                  <div className="text-left flex-1">
-                    <p className="font-medium text-slate-800">Share Link</p>
-                    <p className="text-sm text-slate-500">Copy shareable URL</p>
-                  </div>
-                  {copiedLink ? (
-                    <Check className="w-4 h-4 text-green-600 ml-auto" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-slate-400 ml-auto" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* More Projects CTA */}
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 text-center">
-              <h3 className="font-semibold text-emerald-800 mb-2">
-                Discover More Projects
-              </h3>
-              <p className="text-sm text-emerald-600 mb-4">
-                Explore other amazing projects from our community
-              </p>
-              <button
-                onClick={() => navigate("/gallery")}
-                className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors"
-              >
-                Browse Gallery
-              </button>
-            </div>
           </div>
         </div>
       </div>

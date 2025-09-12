@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import HackathonShowcase from "./components/HackathonShowcase";
 import ProjectGallery from "./components/ProjectGallery";
 import IndividualPost from "./components/HackathonPost";
+import UserDashboard from "./components/UserDashboard";
 
 function App() {
   return (
@@ -19,8 +20,10 @@ function App() {
           {/* <Route path="/hackathon" element={<Hackathon />} /> */}
 
           <Route path="/hackathon" element={<HackathonShowcase />} />
+          <Route path="/submit" element={<HackathonShowcase />} />
           <Route path="/gallery" element={<ProjectGallery />} />
           <Route path="/project/:id" element={<IndividualPost />} />
+          <Route path="/dashboard" element={<UserDashboard />} />
         </Routes>
       </BrowserRouter>
     </>

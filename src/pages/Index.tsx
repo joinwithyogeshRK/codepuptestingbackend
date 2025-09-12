@@ -42,6 +42,9 @@ import {
   Image as ImageIcon,
   X,
   Trophy,
+  GalleryThumbnails,
+  GalleryHorizontal,
+  GalleryHorizontalIcon,
 } from "lucide-react";
 import SupabaseConfigForm from "./form"; // Import the form component
 import ImageUploadSection from "@/components/Image-upload-compoent";
@@ -1454,7 +1457,7 @@ const Index = () => {
               },
             }
           );
-          
+
           // Store raw response data for reward evaluation (UI only)
           setUserPayload((userResponse as any).data);
         } catch (userError) {
@@ -2131,6 +2134,15 @@ const Index = () => {
             >
               <Trophy className="w-5 h-5 text-blue-600" />
               <span className="font-medium">Hackathon</span>
+            </Link>
+
+            <Link
+              to="/gallery"
+              className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg text-slate-800 hover:bg-slate-100 transition-colors"
+              title="gallery"
+            >
+              <GalleryHorizontalIcon className="w-5 h-5 text-blue-600" />
+              <span className="font-medium">Gallery</span>
             </Link>
             {/* Credits before account menu */}
             <div className="mr-2">
